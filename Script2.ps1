@@ -1,8 +1,6 @@
-﻿param(
+param(
     [Parameter(Mandatory=$true)]
-    [int[]]$EventIDs,
-    [switch]$ApplyLogs,
-    [switch]$CollectEvents
+    [int[]]$EventIDs
 )
 
 function Write-ColorText {
@@ -20,14 +18,13 @@ function Write-ColorText {
 
 Write-ColorText "Добро пожаловать в программу настройки логирования" "Green"
 
-
 Write-Host -ForegroundColor DarkYellow "    ___         __        __                      _            "
 Write-Host -ForegroundColor DarkYellow "   /   | __  __/ /_____  / /   ____  ____ _____ _(_)___  ____ _"
 Write-Host -ForegroundColor DarkYellow "  / /| |/ / / / __/ __ \/ /   / __ \/ __  / __  / / __ \/ __  /"
 Write-Host -ForegroundColor DarkYellow " / ___ / /_/ / /_/ /_/ / /___/ /_/ / /_/ / /_/ / / / / / /_/ / "
 Write-Host -ForegroundColor DarkYellow "/_/  |_\__,_/\__/\____/_____/\____/\__, /\__, /_/_/ /_/\__, /  "
 Write-Host -ForegroundColor DarkYellow "                                  /____//____/        /____/   "
-Write-Host -ForegroundColor DarkYellow ""
+
 
 
 
@@ -45,7 +42,7 @@ $loggingScript = CreateLoggingScriptForEventIDs -EventIDs $EventIDs
 Write-ColorText "Скрипт для настройки логирования EventIDs:" "Yellow"
 Write-Output $loggingScript
 
-if ($ApplyLogs) {
+
    $applyScriptPrompt = Read-Host "Хотите запустить скрипт настройки логирования на тестовой машине? (да/нет)"
 if ($applyScriptPrompt -eq "да") {
     $targetHostname = Read-Host "Введите адрес тестовой машины"
@@ -54,10 +51,10 @@ if ($applyScriptPrompt -eq "да") {
 } else {
     Pause
 }
-}
 
 
-if ($CollectEvents) {
+
+
     $collectEventsPrompt = Read-Host "Хотите собрать события с тестовой машины? (да/нет)"
     if ($collectEventsPrompt -eq "да") {
         $targetHostname = Read-Host "Введите адрес тестовой машины"
@@ -69,5 +66,5 @@ if ($CollectEvents) {
 
         Write-ColorText "События успешно собраны и сохранены в CollectedEvents.csv" "Green"
     }
-}
+
 Read-Host "Нажмите Enter для завершения программы"
