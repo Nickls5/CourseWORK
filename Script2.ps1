@@ -32,8 +32,22 @@ function CreateLoggingScriptForEventIDs {
     param($EventIDs)
 
     $auditSetting = "auditpol /clear"
+
+    # Загрузка данных из файла event_categories.json
+    $configPath = "C:\Users\niklo\coursework\event_categories.json"
+    $eventCategories = Get-Content -Path $configPath | ConvertFrom-Json
+
     $EventIDs | ForEach-Object {
-        $auditSetting += "; auditpol /set /subcategory:$_ /success:enable /failure:enable"
+        $eventID = $_
+        # Поиск соответствующей категории по EventID из конфигурационного файла
+        $category = ($eventCategories.EventCategories | Where-Object { $_.EventID -eq $eventID }).Category
+
+        # Создание строки настройки логирования
+        if ($category) {
+            $auditSetting += "; auditpol /set /subcategory:'$eventID' /category:'$category' /success:enable /failure:enable"
+        } else {
+            Write-Host "Event ID $eventID не имеет соответствующей категории в конфигурационном файле."
+        }
     }
     return $auditSetting
 }
@@ -59,7 +73,7 @@ if ($applyScriptPrompt -eq "да") {
     if ($collectEventsPrompt -eq "да") {
         $targetHostname = Read-Host "Введите адрес тестовой машины"
         Write-ColorText "Сбор событий с хоста $targetHostname" "Yellow"
-        # Ваш код для сбора событий с целевого хоста и сохранения в CSV
+        # Код для сбора событий с целевого хоста и сохранения в CSV
         $events = Get-WinEvent -LogName Security -MaxEvents 100 |
     Select-Object -Property TimeCreated, Id, Message
        $events | Export-Csv -Path "CollectedEvents.csv" -Encoding UTF8 -NoTypeInformation
