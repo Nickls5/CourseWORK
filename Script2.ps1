@@ -27,37 +27,34 @@ Write-Host -ForegroundColor DarkYellow "                                  /____/
 
 
 
+# Получение содержимого файла конфигурации
+$auditConfigFile = "C:\Users\niklo\coursework\default_audit.bat.txt"
+$auditConfigContent = Get-Content $auditConfigFile
 
-function CreateLoggingScriptForEventIDs {
-    param($EventIDs)
-
-    $auditSetting = "auditpol /clear"
-
-    # Загрузка данных из файла event_categories.json
-    $configPath = "C:\Users\niklo\coursework\event_categories.json"
-    $eventCategories = Get-Content -Path $configPath | ConvertFrom-Json
-
-    $EventIDs | ForEach-Object {
-        $eventID = $_
-        # Поиск соответствующей категории по EventID из конфигурационного файла
-        $category = ($eventCategories.EventCategories | Where-Object { $_.EventID -eq $eventID }).Category
-
-        # Создание строки настройки логирования
-        if ($category) {
-            $auditSetting += "; auditpol /set /subcategory:'$eventID' /category:'$category' /success:enable /failure:enable"
-        } else {
-            Write-Host "Event ID $eventID не имеет соответствующей категории в конфигурационном файле."
-        }
+# Извлечение команд из файла конфигурации для событий из EventIDs
+$auditCommands = foreach ($eventID in $EventIDs) {
+    $matchingLine = $auditConfigContent | Select-String -Pattern "::\s*$eventID\s*(,|$)"
+    if ($matchingLine) {
+        $matchingLine.Line.Trim()
     }
-    return $auditSetting
 }
 
-$loggingScript = CreateLoggingScriptForEventIDs -EventIDs $EventIDs
-Write-ColorText "Скрипт для настройки логирования EventIDs:" "Yellow"
+function CreateLoggingScriptFromConfig {
+    param($auditCommands)
+
+    $script = "auditpol /clear"
+    foreach ($command in $auditCommands) {
+        $script += "; $command"
+    }
+    return $script
+}
+
+# Создание скрипта настройки логирования из конфига
+$loggingScript = CreateLoggingScriptFromConfig -auditCommands $auditCommands
+Write-ColorText "Скрипт для настройки логирования на основе конфига:" "Yellow"
 Write-Output $loggingScript
 
-
-   $applyScriptPrompt = Read-Host "Хотите запустить скрипт настройки логирования на тестовой машине? (да/нет)"
+$applyScriptPrompt = Read-Host "Хотите запустить скрипт настройки логирования на тестовой машине? (да/нет)"
 if ($applyScriptPrompt -eq "да") {
     $targetHostname = Read-Host "Введите адрес тестовой машины"
     Write-ColorText "Применение настроек логирования на хост $targetHostname" "Yellow"
@@ -66,19 +63,16 @@ if ($applyScriptPrompt -eq "да") {
     Pause
 }
 
-
-
-
-    $collectEventsPrompt = Read-Host "Хотите собрать события с тестовой машины? (да/нет)"
-    if ($collectEventsPrompt -eq "да") {
-        $targetHostname = Read-Host "Введите адрес тестовой машины"
-        Write-ColorText "Сбор событий с хоста $targetHostname" "Yellow"
-        # Код для сбора событий с целевого хоста и сохранения в CSV
-        $events = Get-WinEvent -LogName Security -MaxEvents 100 |
+$collectEventsPrompt = Read-Host "Хотите собрать события с тестовой машины? (да/нет)"
+if ($collectEventsPrompt -eq "да") {
+    $targetHostname = Read-Host "Введите адрес тестовой машины"
+    Write-ColorText "Сбор событий с хоста $targetHostname" "Yellow"
+    # Ваш код для сбора событий с целевого хоста и сохранения в CSV
+    $events = Get-WinEvent -LogName Security -MaxEvents 100 |
     Select-Object -Property TimeCreated, Id, Message
-       $events | Export-Csv -Path "CollectedEvents.csv" -Encoding UTF8 -NoTypeInformation
+    $events | Export-Csv -Path "CollectedEvents.csv" -Encoding UTF8 -NoTypeInformation
 
-        Write-ColorText "События успешно собраны и сохранены в CollectedEvents.csv" "Green"
-    }
+    Write-ColorText "События успешно собраны и сохранены в CollectedEvents.csv" "Green"
+}
 
 Read-Host "Нажмите Enter для завершения программы"
