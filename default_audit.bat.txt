@@ -1,0 +1,56 @@
+:: Audit Policy Change
+:: 4719, 4912
+auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
+
+:: Authorization Policy Change
+:: 4704
+auditpol /set /subcategory:"Authorization Policy Change" /success:enable /failure:enable
+
+:: Credential Validation
+:: 4776
+auditpol /set /subcategory:"Credential Validation" /success:enable /failure:enable
+
+:: Directory Service Replication
+:: 4932
+auditpol /set /subcategory:"Directory Service Replication" /success:enable /failure:enable
+
+:: Kerberos Service Ticket Operations
+:: 4769
+auditpol /set /subcategory:"Kerberos Service Ticket Operations" /success:enable /failure:enable
+
+:: Kerberos Authentication Service
+:: 4768, 4771
+auditpol /set /subcategory:"Kerberos Authentication Service" /success:enable /failure:enable
+
+:: Logon
+:: 4624, 4625, 4648, 4675
+auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+
+:: Other Object Access Events
+:: 4698, 7045
+auditpol /set /subcategory:"Other Object Access Events" /success:enable /failure:disable
+
+:: Process Creation
+:: 4688 (with command line)
+auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable
+reg add "hklm\software\microsoft\windows\currentversion\policies\system\audit" /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1
+
+:: Registry
+:: 4657, 4663
+auditpol /set /subcategory:"Registry" /success:enable /failure:enable
+
+:: Security Group Management
+:: 4728, 4732, 4756
+auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable
+
+:: Security System Extension
+:: 4622, 4697
+auditpol /set /subcategory:"Security System Extension" /success:enable /failure:disable
+
+:: Special Logon
+:: 4672
+auditpol /set /subcategory:"Special Logon" /success:enable /failure:enable
+
+:: User Account Management
+:: 4720, 4722, 4723, 4724, 4726, 4738, 4740, 4794
+auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
