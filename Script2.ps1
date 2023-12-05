@@ -16,63 +16,112 @@ function Write-ColorText {
     }
 }
 
+function Get-AuditCategoryForEvent {
+    param(
+        [string]$configFile,
+        [int]$eventID
+    )
+
+    $auditConfigContent = Get-Content $configFile
+
+    $categories = @()
+    foreach ($line in $auditConfigContent) {
+        if ($line -match '^Category:\s*(.+)$') {
+            $currentCategory = $matches[1].Trim()
+        } elseif ($line -match '^EventIDs:\s*(.+)$' -and $currentCategory) {
+            $eventIDs = $matches[1].Trim() -split ','
+            foreach ($id in $eventIDs) {
+                if ($eventID -eq $id.Trim()) {
+                    if ($currentCategory -notin $categories) {
+                        $categories += $currentCategory
+                    }
+                }
+            }
+        }
+    }
+
+    return $categories
+}
+
 Write-ColorText "Добро пожаловать в программу настройки логирования" "Green"
-
-Write-Host -ForegroundColor DarkYellow "    ___         __        __                      _            "
-Write-Host -ForegroundColor DarkYellow "   /   | __  __/ /_____  / /   ____  ____ _____ _(_)___  ____ _"
-Write-Host -ForegroundColor DarkYellow "  / /| |/ / / / __/ __ \/ /   / __ \/ __  / __  / / __ \/ __  /"
-Write-Host -ForegroundColor DarkYellow " / ___ / /_/ / /_/ /_/ / /___/ /_/ / /_/ / /_/ / / / / / /_/ / "
-Write-Host -ForegroundColor DarkYellow "/_/  |_\__,_/\__/\____/_____/\____/\__, /\__, /_/_/ /_/\__, /  "
-Write-Host -ForegroundColor DarkYellow "                                  /____//____/        /____/   "
-
-
 
 # Получение содержимого файла конфигурации
 $auditConfigFile = "C:\Users\niklo\coursework\default_audit.bat.txt"
-$auditConfigContent = Get-Content $auditConfigFile
 
-# Извлечение команд из файла конфигурации для событий из EventIDs
-$auditCommands = foreach ($eventID in $EventIDs) {
-    $matchingLine = $auditConfigContent | Select-String -Pattern "::\s*$eventID\s*(,|$)"
-    if ($matchingLine) {
-        $matchingLine.Line.Trim()
+$categoriesToSet = @()
+foreach ($eventID in $EventIDs) {
+    $categories = Get-AuditCategoryForEvent -configFile $auditConfigFile -eventID $eventID
+    if ($categories) {
+        foreach ($category in $categories) {
+            if ($category -notin $categoriesToSet) {
+                $categoriesToSet += $category
+            }
+        }
+    } else {
+        Write-Host "Для события с ID $eventID не найдено категорий"
     }
 }
 
-function CreateLoggingScriptFromConfig {
-    param($auditCommands)
 
-    $script = "auditpol /clear"
-    foreach ($command in $auditCommands) {
-        $script += "; $command"
+if ($categoriesToSet.Count -gt 0) {
+
+    Write-Host "Для применения настроек аудита на удаленном компьютере используйте следующие команды:"
+    foreach ($category in $categoriesToSet) {
+        $auditPolCommand = "auditpol /set /subcategory:""$category"" /success:enable /failure:enable"
+        Write-Host $auditPolCommand
+
     }
-    return $script
-}
+    $applyLocal = Read-Host "Применить настройки на текущем компьютере? (да/нет)"
+    if ($applyLocal -eq "да") {
 
-# Создание скрипта настройки логирования из конфига
-$loggingScript = CreateLoggingScriptFromConfig -auditCommands $auditCommands
-Write-ColorText "Скрипт для настройки логирования на основе конфига:" "Yellow"
-Write-Output $loggingScript
+        Write-Host "Применение настроек на текущем компьютере:"
+        foreach ($category in $categoriesToSet) {
+            $auditPolCommand = "auditpol /set /subcategory:""$category"" /success:enable /failure:enable"
+            Write-Host $auditPolCommand
+        }
 
-$applyScriptPrompt = Read-Host "Хотите запустить скрипт настройки логирования на тестовой машине? (да/нет)"
-if ($applyScriptPrompt -eq "да") {
-    $targetHostname = Read-Host "Введите адрес тестовой машины"
-    Write-ColorText "Применение настроек логирования на хост $targetHostname" "Yellow"
-    Write-ColorText "Настройки успешно применены на машине $targetHostname" "Green"
+        $collectEventsLocal = Read-Host "Хотите собрать события на текущем компьютере? (да/нет)"
+        if ($collectEventsLocal -eq "да") {
+            $eventsLocal = Get-WinEvent -LogName Security -MaxEvents 100 |
+                Select-Object -Property TimeCreated, Id, Message
+            $eventsLocal | Export-Csv -Path "CollectedEvents_Local.csv" -Encoding UTF8 -NoTypeInformation
+            Write-Host "События успешно собраны и сохранены в CollectedEvents_Local.csv"
+        }
+
+    } else {
+
+        $targetHostname = Read-Host "Введите адрес удаленной машины"
+        Write-ColorText "Применение настроек аудита на хост $targetHostname" "Yellow"
+        Write-ColorText "Настройки успешно применены на машине $targetHostname" "Green"
+
+        foreach ($category in $categoriesToSet) {
+            $scriptBlock = {
+                param($category)
+                $auditPolCommand = "auditpol /set /subcategory:""$category"" /success:enable /failure:enable"
+                Invoke-Command -ComputerName $env:COMPUTERNAME -ScriptBlock {
+                    Write-Host $using:auditPolCommand
+                }
+            }
+            Invoke-Command -ComputerName $targetHostname -ScriptBlock $scriptBlock -ArgumentList $category
+        }
+
+        $collectEventsRemote = Read-Host "Хотите собрать события на удаленном компьютере? (да/нет)"
+        if ($collectEventsRemote -eq "да") {
+            $eventsRemote = Invoke-Command -ComputerName $targetHostname -ScriptBlock {
+                param($category)
+                $events = Get-WinEvent -LogName Security -MaxEvents 100 |
+                    Select-Object -Property TimeCreated, Id, Message
+                return $events
+            } -ArgumentList $category
+
+            $eventsRemote | Export-Csv -Path "CollectedEvents_Remote.csv" -Encoding UTF8 -NoTypeInformation
+            Write-Host "События успешно собраны и сохранены в CollectedEvents_Remote.csv"
+        }
+    }
+
 } else {
-    Pause
+    Write-Host "Для предоставленных EventIDs не найдены категории"
 }
 
-$collectEventsPrompt = Read-Host "Хотите собрать события с тестовой машины? (да/нет)"
-if ($collectEventsPrompt -eq "да") {
-    $targetHostname = Read-Host "Введите адрес тестовой машины"
-    Write-ColorText "Сбор событий с хоста $targetHostname" "Yellow"
-    # Ваш код для сбора событий с целевого хоста и сохранения в CSV
-    $events = Get-WinEvent -LogName Security -MaxEvents 100 |
-    Select-Object -Property TimeCreated, Id, Message
-    $events | Export-Csv -Path "CollectedEvents.csv" -Encoding UTF8 -NoTypeInformation
-
-    Write-ColorText "События успешно собраны и сохранены в CollectedEvents.csv" "Green"
-}
 
 Read-Host "Нажмите Enter для завершения программы"
