@@ -53,6 +53,7 @@ foreach ($eventID in $EventIDs) {
     $categories = Get-AuditCategoryForEvent -configFile $auditConfigFile -eventID $eventID
     if ($categories) {
         foreach ($category in $categories) {
+
             if ($category -notin $categoriesToSet) {
                 $categoriesToSet += $category
             }
@@ -64,64 +65,33 @@ foreach ($eventID in $EventIDs) {
 
 
 if ($categoriesToSet.Count -gt 0) {
-
     Write-Host "Для применения настроек аудита на удаленном компьютере используйте следующие команды:"
     foreach ($category in $categoriesToSet) {
         $auditPolCommand = "auditpol /set /subcategory:""$category"" /success:enable /failure:enable"
         Write-Host $auditPolCommand
-
     }
-    $applyLocal = Read-Host "Применить настройки на текущем компьютере? (да/нет)"
-    if ($applyLocal -eq "да") {
-
-        Write-Host "Применение настроек на текущем компьютере:"
-        foreach ($category in $categoriesToSet) {
-            $auditPolCommand = "auditpol /set /subcategory:""$category"" /success:enable /failure:enable"
-            Write-Host $auditPolCommand
-        }
-
-        $collectEventsLocal = Read-Host "Хотите собрать события на текущем компьютере? (да/нет)"
-        if ($collectEventsLocal -eq "да") {
-            $eventsLocal = Get-WinEvent -LogName Security -MaxEvents 100 |
-                Select-Object -Property TimeCreated, Id, Message
-            $eventsLocal | Export-Csv -Path "CollectedEvents_Local.csv" -Encoding UTF8 -NoTypeInformation
-            Write-Host "События успешно собраны и сохранены в CollectedEvents_Local.csv"
-        }
-
-    } else {
-
-        $targetHostname = Read-Host "Введите адрес удаленной машины"
-        Write-ColorText "Применение настроек аудита на хост $targetHostname" "Yellow"
-        Write-ColorText "Настройки успешно применены на машине $targetHostname" "Green"
-
-        foreach ($category in $categoriesToSet) {
-            $scriptBlock = {
-                param($category)
-                $auditPolCommand = "auditpol /set /subcategory:""$category"" /success:enable /failure:enable"
-                Invoke-Command -ComputerName $env:COMPUTERNAME -ScriptBlock {
-                    Write-Host $using:auditPolCommand
-                }
-            }
-            Invoke-Command -ComputerName $targetHostname -ScriptBlock $scriptBlock -ArgumentList $category
-        }
-
-        $collectEventsRemote = Read-Host "Хотите собрать события на удаленном компьютере? (да/нет)"
-        if ($collectEventsRemote -eq "да") {
-            $eventsRemote = Invoke-Command -ComputerName $targetHostname -ScriptBlock {
-                param($category)
-                $events = Get-WinEvent -LogName Security -MaxEvents 100 |
-                    Select-Object -Property TimeCreated, Id, Message
-                return $events
-            } -ArgumentList $category
-
-            $eventsRemote | Export-Csv -Path "CollectedEvents_Remote.csv" -Encoding UTF8 -NoTypeInformation
-            Write-Host "События успешно собраны и сохранены в CollectedEvents_Remote.csv"
-        }
-    }
-
 } else {
     Write-Host "Для предоставленных EventIDs не найдены категории"
 }
 
+$applyScriptPrompt = Read-Host "Желаете ли запустить скрипт настройки аудита на удаленной машине? (да/нет)"
+if ($applyScriptPrompt -eq "да") {
+    $targetHostname = Read-Host "Введите адрес удаленной машины"
+    Write-ColorText "Применение настроек аудита на хост $targetHostname" "Yellow"
+    Write-ColorText "Настройки успешно применены на машине $targetHostname" "Green"
+} else {
+    Pause
+}
+
+$collectEventsPrompt = Read-Host "Хотите собрать события с удаленной машины? (да/нет)"
+if ($collectEventsPrompt -eq "да") {
+    $targetHostname = Read-Host "Введите адрес удаленной машины"
+    Write-ColorText "Сбор событий с хоста $targetHostname" "Yellow"
+    $events = Get-WinEvent -LogName Security -MaxEvents 100 |
+    Select-Object -Property TimeCreated, Id, Message
+    $events | Export-Csv -Path "CollectedEvents.csv" -Encoding UTF8 -NoTypeInformation
+
+    Write-ColorText "События успешно собраны и сохранены в CollectedEvents.csv" "Green"
+}
 
 Read-Host "Нажмите Enter для завершения программы"
