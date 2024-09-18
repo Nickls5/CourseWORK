@@ -1,5 +1,4 @@
-param(
-    [Parameter(Mandatory=$true)]
+    param(
     [int[]]$EventIDs
 )
 
@@ -16,82 +15,94 @@ function Write-ColorText {
     }
 }
 
-function Get-AuditCategoryForEvent {
-    param(
-        [string]$configFile,
-        [int]$eventID
-    )
+if (-not $EventIDs) {
+    Write-ColorText "Отсутствуют EventIDs для обработки" "Red"
+} else {
+    function Get-AuditCategoryForEvent {
+        param(
+            [string]$configFile,
+            [int]$eventID
+        )
 
-    $auditConfigContent = Get-Content $configFile
+        $auditConfigContent = Get-Content $configFile
 
-    $categories = @()
-    foreach ($line in $auditConfigContent) {
-        if ($line -match '^Category:\s*(.+)$') {
-            $currentCategory = $matches[1].Trim()
-        } elseif ($line -match '^EventIDs:\s*(.+)$' -and $currentCategory) {
-            $eventIDs = $matches[1].Trim() -split ','
-            foreach ($id in $eventIDs) {
-                if ($eventID -eq $id.Trim()) {
-                    if ($currentCategory -notin $categories) {
-                        $categories += $currentCategory
+        $categories = @()
+        foreach ($line in $auditConfigContent) {
+            if ($line -match '^Category:\s*(.+)$') {
+                $currentCategory = $matches[1].Trim()
+            } elseif ($line -match '^EventIDs:\s*(.+)$' -and $currentCategory) {
+                $eventIDs = $matches[1].Trim() -split ','
+                foreach ($id in $eventIDs) {
+                    if ($eventID -eq $id.Trim()) {
+                        $categoryData = [PSCustomObject]@{
+                            EventID = $eventID
+                            Category = $currentCategory
+                        }
+                        if ($categoryData -notin $categories) {
+                            $categories += $categoryData
+                        }
                     }
                 }
             }
         }
+
+        return $categories
     }
 
-    return $categories
-}
+    function Generate-AuditSettings {
+        param(
+            [object[]]$CategoryData
+        )
 
-Write-ColorText "Добро пожаловать в программу настройки логирования" "Green"
-
-# Получение содержимого файла конфигурации
-$auditConfigFile = "C:\Users\niklo\coursework\default_audit.bat.txt"
-
-$categoriesToSet = @()
-foreach ($eventID in $EventIDs) {
-    $categories = Get-AuditCategoryForEvent -configFile $auditConfigFile -eventID $eventID
-    if ($categories) {
-        foreach ($category in $categories) {
-
-            if ($category -notin $categoriesToSet) {
-                $categoriesToSet += $category
-            }
+        $auditSetting = "auditpol /clear"
+        foreach ($category in $CategoryData) {
+            $auditSetting += "; auditpol /set /subcategory:$($category.Category) /success:enable /failure:enable"
         }
+
+        return $auditSetting
+    }
+
+    # Получение содержимого файла конфигурации
+    $auditConfigFile = "C:\Users\niklo\coursework\default_audit.bat.txt"
+
+    Write-ColorText "Добро пожаловать в программу настройки логирования" "Green"
+    Write-Host -ForegroundColor DarkYellow "    __                ______            _____                        __            "
+    Write-Host -ForegroundColor DarkYellow "   / /   ____  ____ _/ ____/___  ____  / __(_)_______  ____________/ /_____  _____"
+    Write-Host -ForegroundColor DarkYellow "  / /   / __ \/ __  / /   / __ \/ __ \/ /_/ / __  / / / / ___/ __  / __/ __ \/ ___/"
+    Write-Host -ForegroundColor DarkYellow " / /___/ /_/ / /_/ / /___/ /_/ / / / / __/ / /_/ / /_/ / /  / /_/ / /_/ /_/ / /    "
+    Write-Host -ForegroundColor DarkYellow "/_____/\____/\__  /\____/\____/_/ /_/_/ /_/\__  /\____/_/   \____/\__/\____/_/     "
+    Write-Host -ForegroundColor DarkYellow "            /____/                        /____/                                   "
+
+    $categoriesToSet = @()
+    foreach ($eventID in $EventIDs) {
+        $categories = Get-AuditCategoryForEvent -configFile $auditConfigFile -eventID $eventID
+        if ($categories) {
+            foreach ($category in $categories) {
+                Write-Host "Событие с ID $($category.EventID) относится к категории: $($category.Category)"
+
+                if ($category -notin $categoriesToSet) {
+                    $categoriesToSet += $category
+                }
+            }
+        } else {
+            Write-Host "Для события с ID $eventID не найдено категорий"
+        }
+    }
+
+    if ($categoriesToSet.Count -eq 0) {
+        Write-Host "Нет категорий для предоставленных EventIDs"
     } else {
-        Write-Host "Для события с ID $eventID не найдено категорий"
+        Write-Host "Категории, для которых будут применены настройки:"
+        foreach ($category in $categoriesToSet) {
+            Write-Host $category.Category
+        }
     }
-}
 
+    $generatedSettings = Generate-AuditSettings -CategoryData $categoriesToSet
+    Write-Host "Команды для настройки логгирования:"
+    Write-Host $generatedSettings
 
-if ($categoriesToSet.Count -gt 0) {
-    Write-Host "Для применения настроек аудита на удаленном компьютере используйте следующие команды:"
-    foreach ($category in $categoriesToSet) {
-        $auditPolCommand = "auditpol /set /subcategory:""$category"" /success:enable /failure:enable"
-        Write-Host $auditPolCommand
-    }
-} else {
-    Write-Host "Для предоставленных EventIDs не найдены категории"
-}
-
-$applyScriptPrompt = Read-Host "Желаете ли запустить скрипт настройки аудита на удаленной машине? (да/нет)"
-if ($applyScriptPrompt -eq "да") {
-    $targetHostname = Read-Host "Введите адрес удаленной машины"
-    Write-ColorText "Применение настроек аудита на хост $targetHostname" "Yellow"
-    Write-ColorText "Настройки успешно применены на машине $targetHostname" "Green"
-} else {
-    Pause
-}
-
-$collectEventsPrompt = Read-Host "Хотите собрать события с удаленной машины? (да/нет)"
-if ($collectEventsPrompt -eq "да") {
-    $targetHostname = Read-Host "Введите адрес удаленной машины"
-    Write-ColorText "Сбор событий с хоста $targetHostname" "Yellow"
-    $events = Get-WinEvent -LogName Security -MaxEvents 100 |
-    Select-Object -Property TimeCreated, Id, Message
-    $events | Export-Csv -Path "CollectedEvents.csv" -Encoding UTF8 -NoTypeInformation
-
-    Write-ColorText "События успешно собраны и сохранены в CollectedEvents.csv" "Green"
+    Write-ColorText "Программа успешно завершила работу" "Green"
 }
 
 Read-Host "Нажмите Enter для завершения программы"
